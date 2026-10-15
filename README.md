@@ -1,49 +1,78 @@
-# L'Ardoise Digitale
+# 🏪 L'Ardoise Digitale
 
-Gestion de stock et de crédit client (« l'ardoise ») pour les boutiquiers de quartier au Sénégal.
-Voir le cahier des charges d'origine : `Cahier_des_Charges.docx` (PROCESSINGENIERIE, doc 3).
+> **Application de gestion de stock et de crédit client (« l'ardoise ») pour les boutiquiers de quartier au Sénégal.**  
+> Conçue sur mesure d'après le cahier des charges PROCESSINGENIERIE (Dakar, Sénégal).
 
-## Démarrer en local
+---
+
+## 🚀 Démarrer en local
 
 ```bash
-npm install
-npm run dev
+# Lancement rapide sur Windows
+start-ardoise.bat
 ```
 
-Ouvrez [http://localhost:3000](http://localhost:3000).
+Ou en ligne de commande :
+```bash
+npm install
+npm run dev -- -p 3001
+```
 
-## Positionnement (Phase 1 du cahier des charges)
+Ouvrez [http://localhost:3001](http://localhost:3001).
 
-Contrairement à Tontine Digitale (multi-appareils, backend Supabase), l'Ardoise Digitale cible
-d'abord un usage **mono-boutique, hors-ligne** : un seul boutiquier, un seul appareil, aucune
-connexion réseau requise. Toutes les données (produits, clients, ventes, crédits) sont stockées
-directement sur l'appareil via `localStorage` (`src/app/context/ArdoiseContext.tsx`) — c'est
-l'équivalent web du SQLite embarqué prévu dans le cahier des charges pour la version Capacitor.
-Les données survivent à la fermeture de l'app mais restent locales à cet appareil.
+*(Port 3001 utilisé pour coexister avec Koom-Koom Voice sur le port 3000).*
 
-La Phase 2 (synchronisation multi-appareils, recherche de partenariat distribution) et la Phase 4
-(score de fiabilité revendable aux IMF) ne sont pas implémentées ici — voir le cahier des charges
-pour la feuille de route complète.
+---
 
-## Fonctionnalités couvertes (MVP Phase 1)
+## 🎯 Fonctionnalités Clés (MVP Phase 1 Complet)
 
-- **Stock** : catalogue produit, alerte de rupture sur les produits prioritaires, entrées/sorties.
-- **Crédit client** : fiche client avec solde dû, historique achats à crédit + remboursements.
-- **Ventes** : enregistrement rapide cash ou à crédit, décrément automatique du stock.
-- **Rapports** : ventes du jour / 7 derniers jours, marge estimée, produit le plus vendu,
-  trésorerie réelle (cash encaissé vs ardoise en cours).
+### 1. ⚡ Caisse Express & Comptoir Tactile (`/`)
+- Grille de produits tactile adaptée aux téléphones et comptoirs d'épicerie.
+- **Ajout au panier en 1 clic** avec badge de quantité et alerte de stock.
+- **Panier flottant** avec récapitulatif total FCFA et modal d'encaissement.
+- Mode de règlement immédiat : **💵 Espèces (Kees)** ou **📒 Sur l'Ardoise (Bor)**.
+- Si vente à crédit : sélection du client, vérification instantanée du **plafond d'ardoise** et alerte en cas de dépassement.
+- Création rapide de nouveau client intégrée à la caisse.
+- **Génération de reçu / quittance de vente** avec bouton direct de partage WhatsApp.
 
-## Structure
+### 2. 📒 Carnet d'Ardoise & Recouvrement (`/credits` et `/credits/detail`)
+- Liste des ménages et habitués avec solde dû en temps réel.
+- **Jauges de plafond de crédit** (indicateur visuel vert/orange/rouge).
+- **Fiche client complète** avec historique détaillé de chaque article pris à crédit (zéro contestation).
+- **Score de solvabilité** (⭐ Client modèle / ✓ Bon payeur / ⚡ Surveillance).
+- **Relance WhatsApp automatique** avec formules de politesse adaptées au Sénégal et lien direct de règlement Wave.
+- Enregistrement des remboursements (Espèces, Wave, Orange Money) avec option « Tout régler ».
 
-- `src/app/data.ts` — types (Product, Client, Transaction) + données de démonstration.
-- `src/app/context/ArdoiseContext.tsx` — état de l'app, persistance `localStorage`.
-- `src/app/components/SaleModal.tsx` — flux de vente partagé (accueil).
-- `src/app/{stock,credits,rapports}` — les trois sections principales.
+### 3. 📦 Gestion des Stocks & Alertes Rupture (`/stock`)
+- 16 produits typiques d'une boutique dakaroise (Riz parfumé, Huile, Sucre, Pain, Café Touba, Lait en poudre, Tomate pâte, Cubes bouillon, Savon, Oignons...).
+- Double affichage **Français & Wolof** (ex: *Mburu bu neex*, *Ceb bu neex*, *Kaafe Tuubaa*).
+- Alertes de rupture pour produits prioritaires.
+- Modal d'ajustement rapide (+1, +5, réassort grossiste Sandaga, perte/avarie) et calcul des marges bénéficiaires.
 
-## Prochaines étapes suggérées
+### 4. 📊 Rapports Financiers & Trésorerie (`/rapports`)
+- Filtre par période : Aujourd'hui, 7 derniers jours, Ce mois, Global.
+- Chiffre d'Affaires total, marge brute estimée, et taux de recouvrement des crédits.
+- **Vue de la trésorerie réelle** (Cash physique disponible en caisse vs Ardoise en cours).
+- Classement des produits les plus vendus et des plus gros encours clients.
+- Valorisation totale du stock marchant en boutique.
 
-1. Remplacer `localStorage` par le plugin Capacitor SQLite pour un vrai stockage natif offline.
-2. Ajouter la synchronisation Supabase à la reconnexion (Phase 2), sur le même modèle que
-   `../Tontine` (voir `src/lib/tontineApi.ts` de ce projet pour le pattern mock ↔ backend).
-3. Rechercher un partenariat distributeur (brasserie, distributeur télécom) pour l'acquisition,
-   comme recommandé dans le cahier des charges.
+### 5. ⚙️ Ma Boutique — Paramètres & Sauvegarde (`/reglages`)
+- Profil de la boutique (Nom, Quartier/Adresse, Gérant, Téléphone Wave).
+- **Bascule bilingue** : Français 🇫🇷 / Wolof 🇸🇳.
+- **Export & Import de sauvegarde JSON** (sécurité des données sans dépendre d'Internet).
+- Données de démonstration préchargées et réinitialisables.
+
+---
+
+## 🛠️ Architecture & Technologies
+
+- **Framework** : Next.js 16 (App Router) + React 19 + TypeScript
+- **Icons** : Lucide React
+- **Architecture de stockage** : Offline-first (`localStorage`) avec migration de schéma v1 → v2
+- **Responsive** : Conteneur centré type PWA mobile pour smartphone, tablette et PC comptoir
+
+---
+
+## 📦 Dépôt GitHub
+
+- URL officielle : [https://github.com/mamadouelimanewane/ardoise-digitale](https://github.com/mamadouelimanewane/ardoise-digitale)
