@@ -64,6 +64,25 @@ export interface ShopProfile {
     language: 'fr' | 'wo';
 }
 
+export interface LearnedAlias {
+    id: string;
+    phrase: string; // ex: "mere awa", "vitalait", "gloria"
+    type: 'client' | 'product';
+    targetId: string; // clientId or productId
+    targetName: string; // snapshot
+    usageCount: number;
+    updatedAt: string;
+}
+
+export const SEED_LEARNED_ALIASES: LearnedAlias[] = [
+    { id: 'l1', phrase: 'mere awa', type: 'client', targetId: 'c1', targetName: 'Awa Sarr (Mère de famille)', usageCount: 4, updatedAt: '2026-03-01' },
+    { id: 'l2', phrase: 'yaye awa', type: 'client', targetId: 'c1', targetName: 'Awa Sarr (Mère de famille)', usageCount: 2, updatedAt: '2026-03-05' },
+    { id: 'l3', phrase: 'chauffeur', type: 'client', targetId: 'c2', targetName: 'Ibrahima Ba (Chauffeur Taxi)', usageCount: 3, updatedAt: '2026-03-02' },
+    { id: 'l4', phrase: 'gloria', type: 'product', targetId: 'p2', targetName: 'Sachet Lait en poudre (25g)', usageCount: 6, updatedAt: '2026-03-04' },
+    { id: 'l5', phrase: 'vitalait', type: 'product', targetId: 'p2', targetName: 'Sachet Lait en poudre (25g)', usageCount: 5, updatedAt: '2026-03-07' },
+    { id: 'l6', phrase: 'pain chaud', type: 'product', targetId: 'p1', targetName: 'Pain Baguette / Tapalapa', usageCount: 3, updatedAt: '2026-03-08' },
+];
+
 export const generateId = () => Math.random().toString(36).substring(2, 11);
 
 export const formatMoney = (amount: number) => {

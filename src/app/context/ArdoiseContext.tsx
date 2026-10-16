@@ -8,9 +8,11 @@ import {
     CartItem,
     ShopProfile,
     PaymentMethod,
+    LearnedAlias,
     SEED_PRODUCTS,
     SEED_CLIENTS,
     SEED_TRANSACTIONS,
+    SEED_LEARNED_ALIASES,
     DEFAULT_SHOP_PROFILE,
     DICTIONARY,
     generateId,
@@ -27,6 +29,7 @@ interface StoredState {
     transactions: Transaction[];
     shopProfile?: ShopProfile;
     language?: 'fr' | 'wo';
+    learnedAliases?: LearnedAlias[];
 }
 
 export interface ClientStats {
@@ -48,6 +51,9 @@ interface ArdoiseContextType {
     products: Product[];
     clients: Client[];
     transactions: Transaction[];
+    learnedAliases: LearnedAlias[];
+    learnAlias: (phrase: string, type: 'client' | 'product', targetId: string) => void;
+    forgetAlias: (id: string) => void;
     addProduct: (product: Omit<Product, 'id'>) => void;
     updateProduct: (id: string, product: Partial<Product>) => void;
     deleteProduct: (id: string) => void;
@@ -91,12 +97,19 @@ function loadInitialState(): StoredState {
             transactions: SEED_TRANSACTIONS,
             shopProfile: DEFAULT_SHOP_PROFILE,
             language: 'fr',
+            learnedAliases: SEED_LEARNED_ALIASES,
         };
     }
     try {
         const rawV2 = window.localStorage.getItem(STORAGE_KEY);
         if (rawV2) {
-            return JSON.parse(rawV2) as StoredState;
+            const parsed = JSON.parse(rawV2) as StoredState;
+            return {
+                ...parsed,
+                learnedAliases: parsed.learnedAliases && parsed.learnedAliases.length > 0
+                    ? parsed.learnedAliases
+                    : SEED_LEARNED_ALIASES,
+            };
         }
 
         const rawV1 = window.localStorage.getItem(STORAGE_KEY_V1);
@@ -108,6 +121,7 @@ function loadInitialState(): StoredState {
                 transactions: v1Data.transactions || SEED_TRANSACTIONS,
                 shopProfile: DEFAULT_SHOP_PROFILE,
                 language: 'fr',
+                learnedAliases: SEED_LEARNED_ALIASES,
             };
         }
     } catch (e) {
@@ -119,6 +133,7 @@ function loadInitialState(): StoredState {
         transactions: SEED_TRANSACTIONS,
         shopProfile: DEFAULT_SHOP_PROFILE,
         language: 'fr',
+        learnedAliases: SEED_LEARNED_ALIASES,
     };
 }
 
@@ -129,6 +144,7 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
     const [transactions, setTransactions] = useState<Transaction[]>(SEED_TRANSACTIONS);
     const [shopProfile, setShopProfile] = useState<ShopProfile>(DEFAULT_SHOP_PROFILE);
     const [language, setLanguage] = useState<'fr' | 'wo'>('fr');
+    const [learnedAliases, setLearnedAliases] = useState<LearnedAlias[]>(SEED_LEARNED_ALIASES);
 
     useEffect(() => {
         const initial = loadInitialState();
@@ -137,6 +153,7 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
         setTransactions(initial.transactions || SEED_TRANSACTIONS);
         setShopProfile(initial.shopProfile || DEFAULT_SHOP_PROFILE);
         setLanguage(initial.language || 'fr');
+        setLearnedAliases(initial.learnedAliases || SEED_LEARNED_ALIASES);
         setReady(true);
     }, []);
 
@@ -149,12 +166,13 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
                 transactions,
                 shopProfile,
                 language,
+                learnedAliases,
             };
             window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
         } catch (e) {
             console.error("Impossible de persister l'état dans localStorage:", e);
         }
-    }, [ready, products, clients, transactions, shopProfile, language]);
+    }, [ready, products, clients, transactions, shopProfile, language, learnedAliases]);
 
     const t = (key: keyof typeof DICTIONARY.fr): string => {
         const dict = DICTIONARY[language] || DICTIONARY.fr;
@@ -362,6 +380,49 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
         };
     };
 
+    const learnAlias = (phrase: string, type: 'client' | 'product', targetId: string) => {
+        const cleanPhrase = phrase.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (!cleanPhrase) return;
+
+        let targetName = '';
+        if (type === 'client') {
+            targetName = clients.find((c) => c.id === targetId)?.name || 'Client';
+        } else {
+            targetName = products.find((p) => p.id === targetId)?.name || 'Produit';
+        }
+
+        setLearnedAliases((prev) => {
+            const existingIdx = prev.findIndex((a) => a.phrase === cleanPhrase);
+            if (existingIdx >= 0) {
+                const updated = [...prev];
+                updated[existingIdx] = {
+                    ...updated[existingIdx],
+                    targetId,
+                    targetName,
+                    usageCount: updated[existingIdx].usageCount + 1,
+                    updatedAt: todayISO().split('T')[0],
+                };
+                return updated;
+            }
+            return [
+                ...prev,
+                {
+                    id: generateId(),
+                    phrase: cleanPhrase,
+                    type,
+                    targetId,
+                    targetName,
+                    usageCount: 1,
+                    updatedAt: todayISO().split('T')[0],
+                },
+            ];
+        });
+    };
+
+    const forgetAlias = (id: string) => {
+        setLearnedAliases((prev) => prev.filter((a) => a.id !== id));
+    };
+
     const exportBackup = (): string => {
         const data: StoredState = {
             products,
@@ -369,6 +430,7 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
             transactions,
             shopProfile,
             language,
+            learnedAliases,
         };
         return JSON.stringify(data, null, 2);
     };
@@ -381,6 +443,7 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
             if (data.transactions && Array.isArray(data.transactions)) setTransactions(data.transactions);
             if (data.shopProfile) setShopProfile(data.shopProfile);
             if (data.language) setLanguage(data.language);
+            if (data.learnedAliases && Array.isArray(data.learnedAliases)) setLearnedAliases(data.learnedAliases);
             return true;
         } catch (e) {
             console.error("Erreur importation sauvegarde:", e);
@@ -394,6 +457,7 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
         setTransactions(SEED_TRANSACTIONS);
         setShopProfile(DEFAULT_SHOP_PROFILE);
         setLanguage('fr');
+        setLearnedAliases(SEED_LEARNED_ALIASES);
         try {
             window.localStorage.removeItem(STORAGE_KEY);
             window.localStorage.removeItem(STORAGE_KEY_V1);
@@ -414,6 +478,9 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
                 products,
                 clients,
                 transactions,
+                learnedAliases,
+                learnAlias,
+                forgetAlias,
                 addProduct,
                 updateProduct,
                 deleteProduct,
