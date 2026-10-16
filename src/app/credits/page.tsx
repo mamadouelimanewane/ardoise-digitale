@@ -174,8 +174,8 @@ export default function CreditsPage() {
                 ))}
             </div>
 
-            {/* Liste clients */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Liste clients responsive */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
                 {filteredClients.map((c) => {
                     const stats = clientStats(c.id);
                     const limitPct = Math.min(100, (stats.balance / c.creditLimit) * 100);

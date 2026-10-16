@@ -167,8 +167,8 @@ export default function StockPage() {
                 ))}
             </div>
 
-            {/* Liste des produits */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Liste des produits responsive */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
                 {filtered.map((p) => {
                     const low = p.stock <= p.lowStockThreshold;
                     const outOfStock = p.stock === 0;

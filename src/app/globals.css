@@ -39,35 +39,228 @@ body {
   min-height: 100%;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--foreground);
-  background-color: #0F172A;
+  background-color: #F1F5F9;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Container centré pour affichage type application mobile / PWA sur grand écran */
-.mobile-container {
-  max-width: 500px;
-  margin: 0 auto;
+/* ==========================================================================
+   LAYOUT RESPONSIVE FLUIDE (Mobile, Tablette, PC Comptoir)
+   ========================================================================== */
+.app-responsive-container {
+  width: 100%;
   min-height: 100vh;
+  margin: 0 auto;
   background-color: #F8FAFC;
   position: relative;
-  box-shadow: 0 0 50px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
 }
 
-@media (max-width: 500px) {
-  .mobile-container {
-    max-width: 100%;
-    box-shadow: none;
+@media (min-width: 769px) {
+  .app-responsive-container {
+    max-width: 1280px;
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.06);
+    background-color: #FFFFFF;
   }
 }
 
 .main-content {
   flex: 1;
-  padding-bottom: 95px;
+  padding-bottom: 95px; /* Espace pour la bottom nav sur mobile */
 }
 
-/* Cartes & Éléments UI */
+@media (min-width: 769px) {
+  .main-content {
+    padding-bottom: 40px; /* Pas de bottom nav sur desktop */
+  }
+}
+
+/* ==========================================================================
+   BARRE DE NAVIGATION DESKTOP (Écrans >= 769px)
+   ========================================================================== */
+.desktop-header {
+  display: none;
+  background: #FFFFFF;
+  border-bottom: 1.5px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+}
+
+@media (min-width: 769px) {
+  .desktop-header {
+    display: block;
+  }
+}
+
+.desktop-header-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.desktop-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.desktop-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  color: #64748B;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.desktop-nav-item:hover {
+  background: #F1F5F9;
+  color: var(--primary);
+}
+
+.desktop-nav-item.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.btn-desktop-voice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--primary) 0%, #EA580C 100%);
+  color: #fff;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(194, 65, 12, 0.28);
+  transition: all 0.15s ease;
+}
+
+.btn-desktop-voice:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(194, 65, 12, 0.35);
+}
+
+/* ==========================================================================
+   BARRE DE NAVIGATION MOBILE (Écrans < 769px)
+   ========================================================================== */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  height: 72px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 100;
+  left: 0;
+  right: 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.05);
+}
+
+@media (min-width: 769px) {
+  .bottom-nav {
+    display: none; /* Masquée sur desktop */
+  }
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  color: #64748B;
+  font-size: 0.725rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 12px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.nav-item.active {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.nav-item.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 18px;
+  height: 3px;
+  background: var(--primary);
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   BOUTON MICROPHONE FLOTTANT (Vocal 1-Clic)
+   ========================================================================== */
+.floating-voice-btn {
+  position: fixed;
+  bottom: 84px;
+  right: 18px;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #C2410C 0%, #EA580C 100%);
+  color: #FFFFFF;
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 8px 24px rgba(194, 65, 12, 0.45);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 95;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.floating-voice-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 12px 28px rgba(194, 65, 12, 0.55);
+}
+
+.floating-voice-btn:active {
+  transform: scale(0.94);
+}
+
+.voice-btn-label {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 1px;
+}
+
+@media (min-width: 769px) {
+  .floating-voice-btn {
+    bottom: 24px;
+    right: 28px;
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* ==========================================================================
+   CARTES ET ÉLÉMENTS DE MISE EN PAGE RESPONSIVE
+   ========================================================================== */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -79,6 +272,11 @@ body {
 
 .card-clickable {
   cursor: pointer;
+}
+
+.card-clickable:hover {
+  border-color: #CBD5E1;
+  box-shadow: var(--shadow-md);
 }
 
 .card-clickable:active {
@@ -155,26 +353,23 @@ body {
   width: auto;
 }
 
-.btn-icon {
-  width: 38px;
-  height: 38px;
-  padding: 0;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* En-tête de l'application */
+/* En-tête Hero */
 .header-hero {
-  padding: 1.5rem 1.25rem 1.75rem;
+  padding: 1.75rem 1.5rem 2rem;
   background: linear-gradient(135deg, #7C2D12 0%, #C2410C 50%, #EA580C 100%);
   color: white;
   border-bottom-left-radius: var(--radius-xl);
   border-bottom-right-radius: var(--radius-xl);
-  box-shadow: 0 8px 20px rgba(124, 45, 18, 0.25);
+  box-shadow: 0 8px 20px rgba(124, 45, 18, 0.2);
   position: relative;
   overflow: hidden;
+}
+
+@media (min-width: 769px) {
+  .header-hero {
+    margin: 16px 20px 0;
+    border-radius: var(--radius-lg);
+  }
 }
 
 .header-hero::after {
@@ -182,60 +377,11 @@ body {
   position: absolute;
   top: -50px;
   right: -50px;
-  width: 140px;
-  height: 140px;
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.08);
   pointer-events: none;
-}
-
-/* Barre de navigation inférieure */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  width: 100%;
-  max-width: 500px;
-  height: 72px;
-  background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  z-index: 100;
-  left: 50%;
-  transform: translateX(-50%);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.04);
-}
-
-.nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  color: #64748B;
-  font-size: 0.725rem;
-  font-weight: 600;
-  text-decoration: none;
-  padding: 6px 10px;
-  border-radius: 12px;
-  transition: all 0.15s ease;
-  position: relative;
-}
-
-.nav-item.active {
-  color: var(--primary);
-  font-weight: 700;
-}
-
-.nav-item.active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  width: 18px;
-  height: 3px;
-  background: var(--primary);
-  border-radius: 2px;
 }
 
 /* Badges */
@@ -249,16 +395,38 @@ body {
   font-weight: 700;
 }
 
-/* Grille tactile de caisse rapide */
+/* ==========================================================================
+   GRILLE TACTILE DES PRODUITS (Auto-adaptative 2 à 6 colonnes)
+   ========================================================================== */
 .pos-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
 
-@media (min-width: 420px) {
+@media (min-width: 480px) {
   .pos-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 768px) {
+  .pos-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pos-grid {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .pos-grid {
+    grid-template-columns: repeat(6, 1fr);
   }
 }
 
@@ -269,39 +437,54 @@ body {
   padding: 12px 10px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  height: 115px;
+  min-height: 125px;
+}
+
+.pos-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
 }
 
 .pos-card:active {
-  transform: scale(0.95);
+  transform: scale(0.96);
   border-color: var(--primary);
   background-color: #FFF7ED;
 }
 
-/* Panier Flottant */
+/* ==========================================================================
+   PANIER FLOTTANT ADAPTATIF
+   ========================================================================== */
 .floating-cart {
   position: fixed;
   bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 24px);
-  max-width: 476px;
+  max-width: 580px;
   background: #0F172A;
   color: white;
-  border-radius: 16px;
-  padding: 12px 18px;
+  border-radius: 18px;
+  padding: 12px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.45);
   z-index: 90;
   animation: slideUpCart 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (min-width: 769px) {
+  .floating-cart {
+    bottom: 24px;
+    max-width: 680px;
+  }
 }
 
 @keyframes slideUpCart {
@@ -327,6 +510,23 @@ body {
 }
 
 /* Animations */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 0.3; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

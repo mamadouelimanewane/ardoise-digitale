@@ -25,6 +25,8 @@ interface SaleModalProps {
     onUpdateQuantity: (productId: string, delta: number) => void;
     onRemoveItem: (productId: string) => void;
     onClearCart: () => void;
+    initialPaymentType?: 'cash' | 'credit';
+    initialClientId?: string;
 }
 
 export const SaleModal: React.FC<SaleModalProps> = ({
@@ -34,13 +36,20 @@ export const SaleModal: React.FC<SaleModalProps> = ({
     onUpdateQuantity,
     onRemoveItem,
     onClearCart,
+    initialPaymentType,
+    initialClientId,
 }) => {
     const { clients, clientStats, addClient, recordCartSale, shopProfile, t, language } = useArdoise();
 
-    const [paymentType, setPaymentType] = useState<'cash' | 'credit'>('cash');
-    const [clientId, setClientId] = useState<string>(clients[0]?.id || '');
+    const [paymentType, setPaymentType] = useState<'cash' | 'credit'>(initialPaymentType || 'cash');
+    const [clientId, setClientId] = useState<string>(initialClientId || clients[0]?.id || '');
     const [note, setNote] = useState('');
     const [completedTx, setCompletedTx] = useState<Transaction | null>(null);
+
+    React.useEffect(() => {
+        if (initialPaymentType) setPaymentType(initialPaymentType);
+        if (initialClientId) setClientId(initialClientId);
+    }, [initialPaymentType, initialClientId, isOpen]);
 
     // Formulaire de création rapide de client
     const [showNewClientForm, setShowNewClientForm] = useState(false);
