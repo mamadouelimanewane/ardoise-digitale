@@ -6,19 +6,20 @@ import {
     MicOff,
     CheckCircle2,
     X,
-    Volume2,
     Sparkles,
     AlertCircle,
     ShoppingCart,
     ArrowRight,
-    RotateCcw,
     Brain,
     FlaskConical,
     Plus,
     Trash2,
+    Lightbulb,
+    History,
 } from 'lucide-react';
 import { useArdoise } from '../context/ArdoiseContext';
 import { CartItem, formatMoney, LearnedAlias } from '../data';
+import { parseVoiceWithAI, AIParseResult } from '../lib/voiceAIEngine';
 
 // Types pour la Web Speech API
 interface SpeechRecognitionEvent extends Event {
@@ -42,17 +43,6 @@ interface SpeechRecognitionInstance extends EventTarget {
     onresult: ((event: SpeechRecognitionEvent) => void) | null;
 }
 
-interface ParsedVoiceSale {
-    clientId?: string;
-    clientName?: string;
-    paymentType: 'cash' | 'credit';
-    items: CartItem[];
-    totalAmount: number;
-    rawText: string;
-    confidence: number;
-    matchedAlias?: string;
-}
-
 interface VoiceSaleAssistantProps {
     isOpen: boolean;
     onClose: () => void;
@@ -66,16 +56,22 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
     onApplyToCart,
     onDirectSaleConfirmed,
 }) => {
-    const { products, clients, learnedAliases, learnAlias, forgetAlias } = useArdoise();
+    const {
+        products,
+        clients,
+        learnedAliases,
+        learnAlias,
+        forgetAlias,
+        clientHabits,
+        recordVoiceFeedback,
+    } = useArdoise();
 
-    // Onglet actif : 'mic' (micro direct), 'test' (banc d'essai), 'learn' (mémoire d'apprentissage)
     const [activeTab, setActiveTab] = useState<'mic' | 'test' | 'learn'>('mic');
-
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
     const [interimTranscript, setInterimTranscript] = useState('');
     const [speechError, setSpeechError] = useState<string | null>(null);
-    const [parsedSale, setParsedSale] = useState<ParsedVoiceSale | null>(null);
+    const [parsedSale, setParsedSale] = useState<AIParseResult | null>(null);
     const [isSuccess, setIsSuccess] = useState(false);
 
     // Formulaire d'apprentissage rapide manuel
@@ -97,7 +93,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
             (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionInstance }).webkitSpeechRecognition;
 
         if (!SpeechRec) {
-            setSpeechError("Votre navigateur ne supporte pas la reconnaissance vocale Web Speech API (recommandé: Chrome ou Edge sur PC/Android). Vous pouvez utiliser l'onglet Banc d'Essai ci-dessus pour tester le moteur.");
+            setSpeechError("Votre navigateur ne supporte pas la reconnaissance vocale Web Speech API (recommandé: Chrome ou Edge sur PC/Android). Vous pouvez utiliser l'onglet Banc d'Essai ci-dessus pour tester le moteur IA.");
             return;
         }
 
@@ -127,7 +123,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
 
             if (currentFinal) {
                 setTranscript(currentFinal);
-                parseVoiceInput(currentFinal);
+                runAIAnalysis(currentFinal);
             } else if (currentInterim) {
                 setInterimTranscript(currentInterim);
             }
@@ -205,150 +201,14 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
     };
 
     // -----------------------------------------------------------------------
-    // MOTEUR D'ANALYSE DU LANGAGE NATUREL AVEC AUTO-APPRENTISSAGE
+    // ANALYSE IA DU TEXTE (Appel au moteur unifié)
     // -----------------------------------------------------------------------
-    const parseVoiceInput = (text: string) => {
-        const clean = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const runAIAnalysis = (text: string) => {
+        const result = parseVoiceWithAI(text, products, clients, learnedAliases, clientHabits);
+        setParsedSale(result);
 
-        // 1. Détection du mode de paiement
-        const isCreditMatch = /\b(credit|ardoise|dette|carnet|kaye|bor|noter|mettre sur)\b/i.test(clean);
-        const isCashMatch = /\b(cash|espece|especes|liquide|comptant|xalis|payer)\b/i.test(clean);
-        let paymentType: 'cash' | 'credit' = isCreditMatch ? 'credit' : 'cash';
-
-        // 2. Détection du client : d'abord via la mémoire d'auto-apprentissage
-        let detectedClient: typeof clients[0] | undefined = undefined;
-        let matchedAliasPhrase: string | undefined = undefined;
-
-        for (const alias of learnedAliases.filter((a) => a.type === 'client')) {
-            const aliasNorm = alias.phrase.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            if (clean.includes(aliasNorm)) {
-                detectedClient = clients.find((c) => c.id === alias.targetId);
-                matchedAliasPhrase = alias.phrase;
-                break;
-            }
-        }
-
-        // Si non trouvé via alias, chercher par nom/prénom dans la liste des clients
-        if (!detectedClient) {
-            for (const c of clients) {
-                const clientNameNorm = c.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                const parts = clientNameNorm.split(/[\s()]+/);
-                for (const part of parts) {
-                    if (part.length >= 3 && clean.includes(part)) {
-                        detectedClient = c;
-                        break;
-                    }
-                }
-                if (detectedClient) break;
-            }
-        }
-
-        // Si un client précis est cité et que le mode n'est pas explicitement cash, par défaut c'est l'ardoise
-        if (detectedClient && !isCashMatch) {
-            paymentType = 'credit';
-        }
-
-        // 3. Détection des articles et quantités
-        const detectedItems: CartItem[] = [];
-
-        // Base de mots-clés par produit
-        const productKeywords: Record<string, string[]> = {
-            p1: ['pain', 'baguette', 'baguettes', 'tapalapa', 'mburu'],
-            p2: ['lait', 'meew', 'sachet de lait', 'sachets de lait', 'poudre de lait'],
-            p3: ['cafe', 'cafe touba', 'touba', 'kaafe'],
-            p4: ['sucre morceaux', 'morceaux de sucre', 'sucre morso', 'suuker morso'],
-            p5: ['sucre', 'sucre poudre', 'suuker', 'kilo de sucre'],
-            p6: ['huile 1l', 'bouteille d huile', 'bouteilles d huile', 'huile', 'diwlin'],
-            p7: ['demi litre d huile', 'demi litre', 'huile 50cl', 'xawaal'],
-            p8: ['sac de riz', 'sacs de riz', 'riz parfume', 'sac 5kg', 'ceb bu neex', 'riz'],
-            p9: ['kilo de riz', 'riz'],
-            p10: ['tomate', 'boite de tomate', 'boites de tomate', 'concentre de tomate', 'tomaat'],
-            p11: ['cube', 'cubes', 'maggi', 'jumbo', 'bouillon'],
-            p12: ['oignon', 'oignons', 'sooble', 'kilo d oignon'],
-            p13: ['oeuf', 'oeufs', 'nen'],
-            p14: ['savon', 'savon diarama', 'diarama', 'bf', 'saabu'],
-            p15: ['bougie', 'bougies', 'buusi'],
-            p16: ['the', 'the vert', 'warga', 'ataaya'],
-        };
-
-        // Enrichir avec le vocabulaire appris (auto-apprentissage)
-        learnedAliases.filter((a) => a.type === 'product').forEach((alias) => {
-            if (!productKeywords[alias.targetId]) {
-                productKeywords[alias.targetId] = [];
-            }
-            if (!productKeywords[alias.targetId].includes(alias.phrase)) {
-                productKeywords[alias.targetId].unshift(alias.phrase);
-            }
-        });
-
-        // Table de conversion nombres écrits -> chiffres
-        const wordsToNumbers: Record<string, number> = {
-            un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, sept: 7, huit: 8, neuf: 9, dix: 10,
-            quinze: 15, vingt: 20, trente: 30,
-            benn: 1, naar: 2, natt: 3, nent: 4, juroom: 5,
-        };
-
-        // Découpage et recherche
-        products.forEach((product) => {
-            const keywords = productKeywords[product.id] || [product.name.toLowerCase()];
-            keywords.sort((a, b) => b.length - a.length);
-
-            let foundKeyword: string | null = null;
-
-            for (const kw of keywords) {
-                const kwNorm = kw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                const kwRegex = new RegExp(`\\b${kwNorm}\\b`, 'i');
-                if (kwRegex.test(clean)) {
-                    foundKeyword = kwNorm;
-                    break;
-                }
-            }
-
-            if (foundKeyword) {
-                // Recherche de la quantité immédiatement avant le mot
-                let qty = 1;
-                const regexBefore = new RegExp(
-                    `(?:(\\d+)|(un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|benn|naar|natt))\\s*(?:de\\s+)?(?:sachets?|boites?|morceaux?|kilos?|sacs?|bouteilles?|baguettes?|miches?)?\\s*(?:d['\\s]|de\\s+)?${foundKeyword}`,
-                    'i'
-                );
-                const match = clean.match(regexBefore);
-
-                if (match) {
-                    if (match[1]) {
-                        qty = parseInt(match[1], 10);
-                    } else if (match[2]) {
-                        qty = wordsToNumbers[match[2].toLowerCase()] || 1;
-                    }
-                }
-
-                detectedItems.push({
-                    productId: product.id,
-                    productName: product.name,
-                    emoji: product.emoji,
-                    unitPrice: product.price,
-                    cost: product.cost,
-                    quantity: Math.max(1, qty),
-                });
-            }
-        });
-
-        // Calcul du total
-        const totalAmount = detectedItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
-
-        setParsedSale({
-            clientId: detectedClient?.id,
-            clientName: detectedClient?.name,
-            paymentType,
-            items: detectedItems,
-            totalAmount,
-            rawText: text,
-            confidence: detectedItems.length > 0 ? (matchedAliasPhrase ? 0.98 : 0.9) : 0.4,
-            matchedAlias: matchedAliasPhrase,
-        });
-
-        // Synthèse vocale de confirmation
-        if (detectedItems.length > 0) {
-            speakConfirmation(detectedItems, paymentType, detectedClient?.name);
+        if (result.items.length > 0) {
+            speakConfirmation(result.items, result.paymentType, result.clientName);
         }
     };
 
@@ -373,6 +233,10 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
 
     const handleConfirmDirectSale = () => {
         if (!parsedSale || parsedSale.items.length === 0) return;
+
+        // Auto-apprentissage automatique des termes employés lors de la vente confirmée
+        recordVoiceFeedback(parsedSale.rawText, parsedSale.clientId, parsedSale.items);
+
         onDirectSaleConfirmed(parsedSale.items, parsedSale.paymentType, parsedSale.clientId);
         setIsSuccess(true);
 
@@ -383,11 +247,30 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
 
     const handleSendToCart = () => {
         if (!parsedSale || parsedSale.items.length === 0) return;
+
+        recordVoiceFeedback(parsedSale.rawText, parsedSale.clientId, parsedSale.items);
         onApplyToCart(parsedSale.items, parsedSale.paymentType, parsedSale.clientId);
         onClose();
     };
 
-    // Enregistrer un nouvel alias d'apprentissage
+    // Ajouter une suggestion intelligente de panier fréquent
+    const handleAddSuggestion = (item: CartItem) => {
+        if (!parsedSale) return;
+        const updatedItems = [...parsedSale.items, item];
+        const newTotal = updatedItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
+
+        setParsedSale({
+            ...parsedSale,
+            items: updatedItems,
+            totalAmount: newTotal,
+            smartSuggestions: undefined, // Masquer après ajout
+            learningInsights: [
+                ...parsedSale.learningInsights,
+                `Article habituel "${item.productName}" ajouté selon le profil d'achat de ${parsedSale.clientName}.`,
+            ],
+        });
+    };
+
     const handleSaveNewAlias = () => {
         if (!newAliasPhrase.trim() || !newAliasTargetId) return;
         learnAlias(newAliasPhrase.trim(), newAliasType, newAliasTargetId);
@@ -414,7 +297,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                 background: '#fff',
                 borderRadius: 24,
                 width: '100%',
-                maxWidth: 560,
+                maxWidth: 580,
                 maxHeight: '92vh',
                 overflowY: 'auto',
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
@@ -447,7 +330,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                         </div>
                         <div>
                             <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Saisie Vocale IA & Auto-Apprentissage</h3>
-                            <p style={{ margin: 0, fontSize: 11, opacity: 0.85 }}>Reconnaissance intelligente en français & wolof</p>
+                            <p style={{ margin: 0, fontSize: 11, opacity: 0.85 }}>Reconnaissance phonétique & habitudes de caisse</p>
                         </div>
                     </div>
                     <button
@@ -469,7 +352,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                     </button>
                 </div>
 
-                {/* Onglets de navigation : Micro / Banc d'Essai / Auto-Apprentissage */}
+                {/* Onglets de navigation */}
                 <div style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 1fr 1fr',
@@ -541,9 +424,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                 </div>
 
                 <div style={{ padding: '20px 22px' }}>
-                    {/* ======================================================== */}
-                    {/* ONGLET 1 : MICROPHONE DIRECT                              */}
-                    {/* ======================================================== */}
+                    {/* ONGLET 1 : MICROPHONE DIRECT */}
                     {activeTab === 'mic' && (
                         <>
                             {isSuccess ? (
@@ -563,7 +444,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                     </div>
                                     <h3 style={{ fontSize: 20, fontWeight: 800, color: '#065F46' }}>Vente validée par la voix !</h3>
                                     <p style={{ fontSize: 13, color: '#64748B', marginTop: 6 }}>
-                                        Les stocks ont été décrémentés et l&apos;ardoise mise à jour.
+                                        L&apos;IA a mémorisé cette formulation pour vos prochaines dictées.
                                     </p>
                                 </div>
                             ) : (
@@ -638,7 +519,6 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* Retranscription en temps réel */}
                                     {(transcript || interimTranscript) && (
                                         <div style={{
                                             padding: '12px 16px',
@@ -650,13 +530,12 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                             color: '#1E293B',
                                         }}>
                                             <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
-                                                Transcription en direct :
+                                                Transcription entendue :
                                             </span>
                                             &ldquo;{transcript || interimTranscript}&rdquo;
                                         </div>
                                     )}
 
-                                    {/* Erreur micro */}
                                     {speechError && (
                                         <div style={{
                                             padding: '10px 14px',
@@ -679,14 +558,12 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                         </>
                     )}
 
-                    {/* ======================================================== */}
-                    {/* ONGLET 2 : BANC D'ESSAI & SIMULATION                      */}
-                    {/* ======================================================== */}
+                    {/* ONGLET 2 : BANC D'ESSAI & SIMULATION */}
                     {activeTab === 'test' && (
                         <div>
                             <div style={{ marginBottom: 16 }}>
                                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6, textTransform: 'uppercase' }}>
-                                    🧪 Tester une phrase dictée (sans micro)
+                                    🧪 Tester une phrase dictée (Simulation IA)
                                 </label>
                                 <div style={{ display: 'flex', gap: 8 }}>
                                     <input
@@ -705,7 +582,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && customTestInput.trim()) {
                                                 setTranscript(customTestInput.trim());
-                                                parseVoiceInput(customTestInput.trim());
+                                                runAIAnalysis(customTestInput.trim());
                                             }
                                         }}
                                     />
@@ -713,7 +590,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                         onClick={() => {
                                             if (customTestInput.trim()) {
                                                 setTranscript(customTestInput.trim());
-                                                parseVoiceInput(customTestInput.trim());
+                                                runAIAnalysis(customTestInput.trim());
                                             }
                                         }}
                                         className="btn btn-primary"
@@ -724,25 +601,24 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                 </div>
                             </div>
 
-                            {/* Échantillons de test 1-clic */}
                             <div style={{ marginBottom: 18 }}>
                                 <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 8 }}>
-                                    Phrases de test types à exécuter :
+                                    Scénarios de test prédéfinis :
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                     {[
-                                        { label: "1. Vente à crédit classique", text: "Awa Sarr 2 pains et 1 lait à crédit" },
-                                        { label: "2. Vente cash classique", text: "Ibrahima Ba 1 sac de riz et 2 huiles en espèces" },
-                                        { label: "3. Auto-apprentissage alias (Mère Awa = Awa Sarr, Gloria = Lait)", text: "Mère Awa 2 Gloria à l'ardoise" },
-                                        { label: "4. Multi-articles sans client (cash)", text: "3 cafés Touba et 2 sucres cash" },
-                                        { label: "5. Expression wolof courante", text: "Awa Sarr jël na ñaari mburu ak meew ci kaye bi" },
+                                        { label: "1. Vente crédit classique", text: "Awa Sarr 2 baguettes de pain et 1 sachet de lait à crédit" },
+                                        { label: "2. Vente cash avec grand nombre", text: "Ibrahima Ba 1 sac de riz et 2 bouteilles d huile en espèces" },
+                                        { label: "3. Tolérance phonétique (Ibrahim au lieu d'Ibrahima)", text: "Ibrahim Ba 2 cafés Touba cash" },
+                                        { label: "4. Surnom & marque locale (Mère Awa = Awa Sarr, Gloria = Lait)", text: "Mère Awa 2 Gloria sur le carnet" },
+                                        { label: "5. Multi-articles sans nom client", text: "3 cafés Touba et 2 sucres cash" },
                                     ].map((testItem, i) => (
                                         <div
                                             key={i}
                                             onClick={() => {
                                                 setCustomTestInput(testItem.text);
                                                 setTranscript(testItem.text);
-                                                parseVoiceInput(testItem.text);
+                                                runAIAnalysis(testItem.text);
                                             }}
                                             style={{
                                                 padding: '8px 12px',
@@ -768,32 +644,54 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                         </div>
                     )}
 
-                    {/* ======================================================== */}
-                    {/* ONGLET 3 : MÉMOIRE D'AUTO-APPRENTISSAGE                   */}
-                    {/* ======================================================== */}
+                    {/* ONGLET 3 : MÉMOIRE D'AUTO-APPRENTISSAGE */}
                     {activeTab === 'learn' && (
                         <div>
                             <div style={{ marginBottom: 16 }}>
                                 <h4 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 800, color: '#1E293B' }}>
-                                    🧠 Comment fonctionne l&apos;auto-apprentissage ?
+                                    🧠 Mémoire d&apos;Auto-Apprentissage & Habitudes Clients
                                 </h4>
                                 <p style={{ fontSize: 12, color: '#64748B', lineHeight: 1.5 }}>
-                                    L&apos;IA apprend les surnoms de vos clients (*« Mère Awa »*, *« Tonton Ibra »*) et les marques locales (*« Gloria »* pour le lait, *« Tapalapa »* pour le pain).
-                                    Dès que vous apprenez un alias, le système le reconnaît automatiquement à chaque dictée vocale.
+                                    L&apos;IA retient automatiquement les surnoms de vos clients (*« Mère Awa »*, *« Tonton Ibra »*) et les marques de quartier (*« Gloria »* pour le lait, *« Tapalapa »* pour le pain).
+                                    Elle analyse également les habitudes d&apos;achat pour suggérer les produits usuels.
                                 </p>
                             </div>
+
+                            {/* Habitudes clients détectées */}
+                            {clientHabits.length > 0 && (
+                                <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 800, color: '#166534', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <History size={15} /> Habitudes d&apos;achat apprises par client :
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#166534' }}>
+                                        {clientHabits.slice(0, 3).map((h) => {
+                                            const clientName = clients.find((c) => c.id === h.clientId)?.name || 'Client';
+                                            const topProds = h.frequentProducts.slice(0, 2).map((p) => {
+                                                const prod = products.find((pr) => pr.id === p.productId);
+                                                return `${prod?.emoji || ''} ${prod?.name || ''}`;
+                                            }).join(', ');
+
+                                            return (
+                                                <div key={h.clientId} style={{ background: '#fff', padding: '6px 10px', borderRadius: 8, border: '1px solid #DCFCE7' }}>
+                                                    <strong>{clientName}</strong> : {topProds || 'Achats divers'} · <em>{h.preferredPayment === 'credit' ? 'Ardoise fréquente' : 'Paiement cash'}</em>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Formulaire pour enseigner une nouvelle expression */}
                             <div style={{ background: '#FFF7ED', border: '1.5px solid #FED7AA', borderRadius: 14, padding: 14, marginBottom: 16 }}>
                                 <div style={{ fontSize: 12, fontWeight: 800, color: '#9A3412', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <Sparkles size={15} /> Enseigner une nouvelle expression à l&apos;IA
+                                    <Sparkles size={15} /> Enseigner une nouvelle règle à l&apos;IA
                                 </div>
 
                                 <div style={{ marginBottom: 8 }}>
                                     <input
                                         value={newAliasPhrase}
                                         onChange={(e) => setNewAliasPhrase(e.target.value)}
-                                        placeholder="Mot ou surnom prononcé (ex: Mère Fatou, Nido, Tapalapa)"
+                                        placeholder="Mot prononcé (ex: Mère Fatou, Nido, Tapalapa)"
                                         style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #FDBA74', fontSize: 12, outline: 'none' }}
                                     />
                                 </div>
@@ -842,7 +740,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                             {/* Liste des règles apprises */}
                             <div>
                                 <div style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: 8 }}>
-                                    Vocabulaire mémorisé ({learnedAliases.length} règles) :
+                                    Vocabulaire appris ({learnedAliases.length} règles) :
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
                                     {learnedAliases.map((alias) => (
@@ -878,9 +776,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                         </div>
                     )}
 
-                    {/* ======================================================== */}
-                    {/* RÉSULTAT DE L'ANALYSE IA (partagé entre onglet micro et test) */}
-                    {/* ======================================================== */}
+                    {/* RÉSULTAT DE L'ANALYSE IA */}
                     {parsedSale && (
                         <div style={{
                             background: parsedSale.items.length > 0 ? '#F0FDF4' : '#FFFBEB',
@@ -892,14 +788,30 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: parsedSale.items.length > 0 ? '#166534' : '#92400E', fontWeight: 800, fontSize: 14 }}>
                                     <Sparkles size={16} />
-                                    {parsedSale.items.length > 0 ? 'Vente détectée avec succès !' : 'Articles non reconnus'}
+                                    {parsedSale.items.length > 0 ? 'Vente détectée par l\'IA !' : 'Articles non reconnus'}
                                 </div>
-                                {parsedSale.matchedAlias && (
-                                    <span style={{ fontSize: 11, background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: 8, fontWeight: 700 }}>
-                                        🧠 Reconnu via apprentissage
-                                    </span>
-                                )}
+                                <span style={{
+                                    fontSize: 11,
+                                    background: parsedSale.overallConfidence >= 90 ? '#DCFCE7' : '#FEF3C7',
+                                    color: parsedSale.overallConfidence >= 90 ? '#15803D' : '#92400E',
+                                    padding: '2px 8px',
+                                    borderRadius: 8,
+                                    fontWeight: 700,
+                                }}>
+                                    ⚡ Confiance IA : {parsedSale.overallConfidence}%
+                                </span>
                             </div>
+
+                            {/* Déductions & Insights d'apprentissage */}
+                            {parsedSale.learningInsights.length > 0 && (
+                                <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '8px 10px', marginBottom: 12, fontSize: 11, color: '#166534' }}>
+                                    {parsedSale.learningInsights.map((insight, idx) => (
+                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                                            <span>🧠</span> {insight}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             {parsedSale.items.length > 0 ? (
                                 <>
@@ -908,7 +820,7 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                         <div>
                                             <span style={{ fontSize: 11, color: '#64748B', display: 'block' }}>Client détecté :</span>
                                             <strong style={{ fontSize: 14, color: '#1E293B' }}>
-                                                {parsedSale.clientName ? `👤 ${parsedSale.clientName}` : '🛒 Client de passage (comptoir)'}
+                                                {parsedSale.clientName ? `👤 ${parsedSale.clientName}` : '🛒 Client de passage'}
                                             </strong>
                                         </div>
                                         <div style={{ textAlign: 'right' }}>
@@ -944,6 +856,27 @@ export const VoiceSaleAssistant: React.FC<VoiceSaleAssistantProps> = ({
                                             {formatMoney(parsedSale.totalAmount)}
                                         </span>
                                     </div>
+
+                                    {/* Suggestions d'habitudes d'achat */}
+                                    {parsedSale.smartSuggestions && parsedSale.smartSuggestions.length > 0 && (
+                                        <div style={{ marginTop: 12, padding: '10px 12px', background: '#FEF3C7', borderRadius: 12, border: '1px solid #FDE68A' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#92400E', marginBottom: 6 }}>
+                                                <Lightbulb size={15} /> Suggestion basée sur les habitudes :
+                                            </div>
+                                            {parsedSale.smartSuggestions.map((sug, i) => (
+                                                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12 }}>
+                                                    <span style={{ color: '#78350F' }}>{sug.text}</span>
+                                                    <button
+                                                        onClick={() => handleAddSuggestion(sug.item)}
+                                                        className="btn btn-sm"
+                                                        style={{ background: '#D97706', color: '#fff', fontSize: 11, padding: '4px 8px' }}
+                                                    >
+                                                        + Ajouter
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
 
                                     {/* Boutons de validation rapide */}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>

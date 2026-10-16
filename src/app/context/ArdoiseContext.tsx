@@ -19,6 +19,8 @@ import {
     todayISO,
 } from '../data';
 
+import { ClientHabit, normalizeText } from '../lib/voiceAIEngine';
+
 const STORAGE_KEY = 'ardoise-digitale:v2';
 // Fallback key pour récupérer les données de la v1 si existantes
 const STORAGE_KEY_V1 = 'ardoise-digitale:v1';
@@ -54,6 +56,8 @@ interface ArdoiseContextType {
     learnedAliases: LearnedAlias[];
     learnAlias: (phrase: string, type: 'client' | 'product', targetId: string) => void;
     forgetAlias: (id: string) => void;
+    clientHabits: ClientHabit[];
+    recordVoiceFeedback: (rawPhrase: string, confirmedClientId?: string, confirmedItems?: CartItem[]) => void;
     addProduct: (product: Omit<Product, 'id'>) => void;
     updateProduct: (id: string, product: Partial<Product>) => void;
     deleteProduct: (id: string) => void;
@@ -451,6 +455,54 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    const clientHabits = React.useMemo((): ClientHabit[] => {
+        const map = new Map<string, { productCounts: Record<string, number>; creditCount: number; cashCount: number; total: number }>();
+        transactions.forEach((t) => {
+            if (!t.clientId) return;
+            const entry = map.get(t.clientId) || { productCounts: {}, creditCount: 0, cashCount: 0, total: 0 };
+            entry.total += 1;
+            if (t.type === 'sale_credit') entry.creditCount += 1;
+            if (t.type === 'sale_cash') entry.cashCount += 1;
+            if (t.items) {
+                t.items.forEach((it) => {
+                    entry.productCounts[it.productId] = (entry.productCounts[it.productId] || 0) + it.quantity;
+                });
+            }
+            map.set(t.clientId, entry);
+        });
+
+        return Array.from(map.entries()).map(([clientId, data]) => {
+            const sortedProducts = Object.entries(data.productCounts)
+                .map(([productId, count]) => ({ productId, count }))
+                .sort((a, b) => b.count - a.count);
+
+            return {
+                clientId,
+                frequentProducts: sortedProducts,
+                preferredPayment: data.creditCount >= data.cashCount ? 'credit' : 'cash',
+                totalVoiceSales: data.total,
+            };
+        });
+    }, [transactions]);
+
+    const recordVoiceFeedback = (rawPhrase: string, confirmedClientId?: string, confirmedItems?: CartItem[]) => {
+        const clean = normalizeText(rawPhrase);
+        if (confirmedClientId) {
+            const client = clients.find((c) => c.id === confirmedClientId);
+            if (client) {
+                const clientWords = normalizeText(client.name).split(' ');
+                const phraseWords = clean.split(' ').filter((w) => w.length >= 4);
+                const excluded = ['credit', 'ardoise', 'dette', 'espece', 'especes', 'cash', 'pour', 'avec', 'mettre', 'donne', 'prend'];
+                for (const pw of phraseWords) {
+                    if (!clientWords.includes(pw) && !excluded.includes(pw)) {
+                        learnAlias(pw, 'client', confirmedClientId);
+                        break;
+                    }
+                }
+            }
+        }
+    };
+
     const resetToDemoData = () => {
         setProducts(SEED_PRODUCTS);
         setClients(SEED_CLIENTS);
@@ -481,6 +533,8 @@ export const ArdoiseProvider = ({ children }: { children: ReactNode }) => {
                 learnedAliases,
                 learnAlias,
                 forgetAlias,
+                clientHabits,
+                recordVoiceFeedback,
                 addProduct,
                 updateProduct,
                 deleteProduct,
